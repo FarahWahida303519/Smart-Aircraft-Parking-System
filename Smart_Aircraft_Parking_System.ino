@@ -1,6 +1,11 @@
+
+// ======================================
+// Library
+// ======================================
+
 #include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <Adafruit_GFX.h> //to draw lines,shape
+#include <Adafruit_SSD1306.h> //display information on the oled
 
 // ======================================
 // OLED SETTINGS the part
@@ -8,11 +13,13 @@
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-#define OLED_ADDRESS 0x3C
+#define OLED_ADDRESS 0x3C //defines the I2C address of the OLED(SDA AND SDCL (COMMUNICATION Line)  )
 
+// Createand configure the OLED display object
 Adafruit_SSD1306 display(
   SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1
 );
+
 
 // ======================================
 // ESP32 PIN CONNECTIONS DEFINE ALL SENSOR FIRST
@@ -27,28 +34,28 @@ Adafruit_SSD1306 display(
 // DEFINE THE  VARIABLES
 // ======================================
 
-float distanceCm = -1;
-int sensorState = HIGH;
+float distanceCm = -1; // No valid distance reading(no signal)
+int sensorState = HIGH; //1 == status no obstacle
 
 int currentPage = 1;
 
-const int TOUCH_THRESHOLD = 50;
-const int TOUCH_RELEASE_THRESHOLD = 65;
+const int TOUCH_THRESHOLD = 50; //recognise user touch male pin. below 50==touch detect
+const int TOUCH_RELEASE_THRESHOLD = 65;//Detects when the user releases the pin. above 65== release pin
 
-bool touchArmed = true;
+bool touchArmed = true;//determines whether the system is ready to detect a new touch
 bool touchTiming = false;
 
-unsigned long touchStartTime = 0;
-unsigned long lastTouchTime = 0;
+unsigned long touchStartTime = 0; //Records when touch begins(3sec)
+unsigned long lastTouchTime = 0;//Records previous touch activation
 unsigned long lastSensorTime = 0;
 unsigned long lastDisplayTime = 0;
 unsigned long lastSerialTime = 0;
 
-const unsigned long TOUCH_HOLD_TIME = 3000;
-const unsigned long DEBOUNCE_TIME = 500;
-const unsigned long SENSOR_INTERVAL = 200;
-const unsigned long DISPLAY_INTERVAL = 200;
-const unsigned long SERIAL_INTERVAL = 1000;
+const unsigned long TOUCH_HOLD_TIME = 3000; //hold pin for 3 sec to open page2
+const unsigned long DEBOUNCE_TIME = 500;//Prevents rapid repeated touch activation
+const unsigned long SENSOR_INTERVAL = 200;//ontrols how often the ESP32 reads the sensor
+const unsigned long DISPLAY_INTERVAL = 200;//Controls how often the OLED refresh
+const unsigned long SERIAL_INTERVAL = 1000;//serial monitor
 
 // ======================================
 // DRAW SMALL AIRPLANE OPENING  (Style )
@@ -56,14 +63,14 @@ const unsigned long SERIAL_INTERVAL = 1000;
 
 void drawAirplane(int x, int y) {
 
-  // Aircraft body
+  // This for  body Aircraft
   display.drawLine(x + 10, y, x + 10, y + 16, SSD1306_WHITE);
 
-  // Aircraft wings
+  //  wings
   display.drawLine(x + 10, y + 5, x, y + 10, SSD1306_WHITE);
   display.drawLine(x + 10, y + 5, x + 20, y + 10, SSD1306_WHITE);
 
-  // Aircraft tail
+  //  tail
   display.drawLine(x + 10, y + 13, x + 4, y + 17, SSD1306_WHITE);
   display.drawLine(x + 10, y + 13, x + 16, y + 17, SSD1306_WHITE);
 }
@@ -86,7 +93,7 @@ void showStartup() {
   display.setCursor(42, 13);
   display.println("CONTROL");
 
-  // Aircraft illustration
+  // Aircraft draw
   drawAirplane(54, 25);
 
   // System name
@@ -119,52 +126,57 @@ void showStartup() {
 // READ HC-SR04 DISTANCE
 // ======================================
 
+//function used to measure the distance between the sensor  sensor and an object
 float readDistance() {
 
+  //set trig pin to low for 2micrsec
   digitalWrite(TRIG_PIN, LOW);
   delayMicroseconds(2);
 
+  //send ultrasonic trigger pulse
+  //set trig pin to high 10microsec to active sensor
   digitalWrite(TRIG_PIN, HIGH);
   delayMicroseconds(10);
 
-  digitalWrite(TRIG_PIN, LOW);
+  digitalWrite(TRIG_PIN, LOW);//set trig to low after 10 microsec
 
-  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);//measure how log dgital signal (time taken by the ultrasonic wave to travel to the object and return depends on the distance)
 
   // Return -1 when no echo is received
+  //check sensor receive valid echo pulse within timeout
   if (duration == 0) {
-    return -1;
+    return -1;//If no echo is received return -1
   }
 
-  // Convert echo time into centimetres
+  // Calculate the distance in centimetres and return the result
   return duration * 0.0343 / 2.0;
 }
 
 // ======================================
-// READ BOTH SENSORS
+// READ BOTH SENSORS Function
 // ======================================
 
 void readSensors() {
 
-  distanceCm = readDistance();
+  distanceCm = readDistance();//hc sensor
 
-  sensorState = digitalRead(IR_SENSOR);
+  sensorState = digitalRead(IR_SENSOR);//fc sensor
 }
 
 // ======================================
-// PARKING STATUS
+// DETERMINE PARKING STATUS (FC Sensor)
 // FC-51 LOW = OCCUPIED
 // FC-51 HIGH = AVAILABLE
 // ======================================
 
 bool isOccupied() {
 
-  return sensorState == LOW;
+  return sensorState == LOW; //detect Obj
 }
 
 // ======================================
 // AIRCRAFT DISTANCE STATUS
-//fution for assigned the status based on the distance then ust call this function later
+//function for assigned the status based on the distance then  call this function later
 // ======================================
 
 const char* getDistanceStatus() {
@@ -181,6 +193,10 @@ const char* getDistanceStatus() {
     return "LANDING APPROACH";
   }
 
+  if (distanceCm > 0) {
+    return "AIRCRAFT ARRIVED - STOP";
+  }
+
   return "AIRCRAFT ARRIVED";
 }
 
@@ -190,6 +206,7 @@ const char* getDistanceStatus() {
 
 void showPage1() {
 
+  //Clear the OLED and set text colour
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
 
@@ -212,7 +229,7 @@ void showPage1() {
   display.drawLine(0, 36, 127, 36, SSD1306_WHITE);
 
 
-  // Display the current parking status
+  // Display the current parking status by call method isOccupied()
   display.setTextSize(2);
 
   if (isOccupied()) {
@@ -241,10 +258,11 @@ void showPage1() {
 
 void showPage2() {
 
+  //Clear the OLED and set text colour
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
 
-  // System heading 
+  // System heading
   display.setTextSize(1);
   display.setCursor(0, 0);
   display.println("AERO PARK CONTROL");
@@ -276,15 +294,7 @@ void showPage2() {
   display.setTextSize(1);
   display.setCursor(0, 55);
 
-  if (distanceCm > 0 && distanceCm <= 5) {
-
-    display.println("AIRCRAFT ARRIVED - STOP");
-
-  } else {
-
-    display.println(getDistanceStatus());// call the function getDistanceStatus to get the status distance
-
-  }
+  display.println(getDistanceStatus());// call the function getDistanceStatus to get the status distance
 
   display.display();
 }
@@ -297,11 +307,11 @@ void handleTouch(int touchValue) {
 
   unsigned long currentTime = millis();
 
-  if (touchArmed) {
+  if (touchArmed) {//true==detect new touch.false==waiting release pin
 
-    if (touchValue < TOUCH_THRESHOLD) {
+    if (touchValue < TOUCH_THRESHOLD) { //touch_thredshold == 50
 
-      if (!touchTiming) {
+      if (!touchTiming) {// Check whether touch timing has started. false ==system not start timing touch
 
         touchStartTime = currentTime;
         touchTiming = true;
@@ -310,13 +320,13 @@ void handleTouch(int touchValue) {
       }
 
       // Change page after press male pin  3 seconds
-      if (currentTime - touchStartTime >= TOUCH_HOLD_TIME &&
-          currentTime - lastTouchTime >= DEBOUNCE_TIME) {
+      if (currentTime - touchStartTime >= TOUCH_HOLD_TIME && // ensures the user holds the pin for 3 seconds
+          currentTime - lastTouchTime >= DEBOUNCE_TIME) {//prevents rapid repeated activation
 
-        currentPage = (currentPage == 1) ? 2 : 1;
+        currentPage = (currentPage == 1) ? 2 : 1; //change pages
 
-        touchArmed = false;
-        touchTiming = false;
+        touchArmed = false;//Temporarily disables new touch detection until the user releases the pin
+        touchTiming = false;//Resets the touch timing state
 
         lastTouchTime = currentTime;
 
@@ -324,7 +334,7 @@ void handleTouch(int touchValue) {
         Serial.println(currentPage);
       }
 
-    } else if (touchValue > TOUCH_RELEASE_THRESHOLD) {
+    } else if (touchValue > TOUCH_RELEASE_THRESHOLD) {//check when use release pin
 
       touchTiming = false;
       touchStartTime = 0;
@@ -335,8 +345,8 @@ void handleTouch(int touchValue) {
     // Wait until the touch pin is release
     if (touchValue > TOUCH_RELEASE_THRESHOLD) {
 
-      touchArmed = true;
-      touchTiming = false;
+      touchArmed = true; //allow new touch
+      touchTiming = false; //reset timer
       touchStartTime = 0;
 
       Serial.println("TOUCH RELEASED - READY");
@@ -375,11 +385,7 @@ void printSerialData(int touchValue) {
 
   Serial.print("AIRCRAFT STATUS: ");
 
-  if (distanceCm > 0 && distanceCm <= 5) {
-    Serial.println("AIRCRAFT ARRIVED - STOP");
-  } else {
-    Serial.println(getDistanceStatus());
-  }
+  Serial.println(getDistanceStatus());
 
   Serial.print("FC-51 SENSOR: ");
 
@@ -397,13 +403,14 @@ void printSerialData(int touchValue) {
 }
 
 // ======================================
-// SETUP FOR OLED PART
+// SETUP FOR OLED PART (prepares the ESP32, sensors and OLED)
 // ======================================
 
 void setup() {
 
   Serial.begin(115200);
 
+//configure sensor pin
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
   pinMode(IR_SENSOR, INPUT);
@@ -411,7 +418,7 @@ void setup() {
   // Start OLED communication
   Wire.begin(21, 22);
 
-  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
+  if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {//Check whether the OLED is detected
 
     Serial.println("OLED NOT DETECTED!");
 
